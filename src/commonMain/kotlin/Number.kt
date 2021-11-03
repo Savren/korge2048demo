@@ -1,6 +1,6 @@
 import com.soywiz.korim.color.RGBA
 
-enum class Number (val value: Int, val color: RGBA) {
+enum class Number(val value: Int, val color: RGBA) {
     ZERO(2, RGBA(240, 228, 218)),
     ONE(4, RGBA(236, 224, 201)),
     TWO(8, RGBA(255, 178, 120)),
@@ -18,4 +18,6 @@ enum class Number (val value: Int, val color: RGBA) {
     FOURTEEN(32768, RGBA(9, 43, 202)),
     FIFTEEN(65536, RGBA(181, 37, 188)),
     SIXTEEN(131072, RGBA(166, 34, 172));
+
+    fun next() = values()[(ordinal + 1) % values().size]
 }

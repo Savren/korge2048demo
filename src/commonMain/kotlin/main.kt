@@ -1,6 +1,10 @@
+import com.soywiz.klock.seconds
 import com.soywiz.korev.Key
 import com.soywiz.korge.*
+import com.soywiz.korge.animate.Animator
+import com.soywiz.korge.animate.animateSequence
 import com.soywiz.korge.input.*
+import com.soywiz.korge.tween.*
 import com.soywiz.korge.ui.*
 import com.soywiz.korge.view.*
 import com.soywiz.korim.color.Colors
@@ -9,9 +13,11 @@ import com.soywiz.korim.font.BitmapFont
 import com.soywiz.korim.font.readBitmapFont
 import com.soywiz.korim.format.readBitmap
 import com.soywiz.korim.text.TextAlignment
+import com.soywiz.korio.async.launchImmediately
 import com.soywiz.korio.file.std.resourcesVfs
 import com.soywiz.korma.geom.Rectangle
 import com.soywiz.korma.geom.vector.roundRect
+import com.soywiz.korma.interpolation.Easing
 import kotlin.properties.Delegates
 import kotlin.random.Random
 
@@ -93,6 +99,9 @@ suspend fun main() = Korge(width = 480, height = 640, bgcolor = RGBA(253, 247, 2
         }
         alignTopToBottomOf(bgBest, 5.0)
         alignRightToRightOf(bgField)
+        onClick {
+            this@Korge.restart()
+        }
     }
     val undoBlock = container {
         val background = roundRect(btnSize, btnSize, 5.0, fill = RGBA(185, 174, 160))
@@ -185,15 +194,140 @@ fun Container.showGameOver(onRestart: () -> Unit) = container {
 }
 
 fun Stage.moveBlocksTo(direction: Direction) {
-    if (isAnimationRunning) return
-    //if (!map.hasAvailableMoves()) {
-    if (!isGameOver) {
-        isGameOver = true
-        showGameOver {
-            isGameOver = false
-            //restart()
+    if (isAnimationRunning) {
+        return
+    }
+
+    if (!map.hasAvailableMoves()) {
+        if (!isGameOver) {
+            isGameOver = true
+            showGameOver {
+                isGameOver = false
+                restart()
+            }
         }
     }
-    //}
-    return
+
+    val moves = mutableListOf<Pair<Int, Position>>()
+    val merges = mutableListOf<Triple<Int, Int, Position>>()
+
+    val newMap = calculateNewMap(map.copy(), direction, moves, merges)
+
+    if (map != newMap) {
+        isAnimationRunning = true
+        showAnimation(moves, merges) {
+            map = newMap
+            generateBlock()
+            isAnimationRunning = false
+        }
+    }
+}
+
+fun calculateNewMap(
+    map: PositionMap,
+    direction: Direction,
+    moves: MutableList<Pair<Int, Position>>,
+    merges: MutableList<Triple<Int, Int, Position>>
+): PositionMap {
+    val newMap = PositionMap()
+    val startIndex = when (direction) {
+        Direction.LEFT, Direction.UP -> 0
+        Direction.RIGHT, Direction.DOWN -> 3
+    }
+    var columnRow = startIndex
+
+    fun newPosition(line: Int) = when (direction) {
+        Direction.LEFT -> Position(columnRow++, line)
+        Direction.RIGHT -> Position(columnRow--, line)
+        Direction.UP -> Position(line, columnRow++)
+        Direction.DOWN -> Position(line, columnRow--)
+    }
+
+    for (line in 0..3) {
+        var curPos = map.getNotEmptyPositionFrom(direction, line)
+        columnRow = startIndex
+        while (curPos != null) {
+            val newPos = newPosition(line)
+            val curId = map[curPos.x, curPos.y]
+            map[curPos.x, curPos.y] = -1
+
+            val nextPos = map.getNotEmptyPositionFrom(direction, line)
+            val nextId = nextPos?.let { map[it.x, it.y] }
+            if (nextId != null && numberFor(curId) == numberFor(nextId)) {
+                map[nextPos.x, nextPos.y] = -1
+                newMap[newPos.x, newPos.y] = curId
+                merges += Triple(curId, nextId, newPos)
+            } else {
+                newMap[newPos.x, newPos.y] = curId
+                moves += Pair(curId, newPos)
+            }
+            curPos = map.getNotEmptyPositionFrom(direction, line)
+        }
+    }
+    return newMap
+}
+
+fun numberFor(blockId: Int) = blocks[blockId]!!.number
+
+fun deleteBlock(blockId: Int) = blocks.remove(blockId)!!.removeFromParent()
+
+fun Container.restart() {
+    map = PositionMap()
+    blocks.values.forEach { it.removeFromParent() }
+    blocks.clear()
+    generateBlock()
+}
+
+fun Stage.showAnimation(
+    moves: List<Pair<Int, Position>>,
+    merges: List<Triple<Int, Int, Position>>,
+    onEnd: () -> Unit
+) = launchImmediately {
+    animateSequence {
+        parallel {
+            moves.forEach { (id, pos) ->
+                blocks[id]!!.moveTo(columnX(pos.x), rowY(pos.y), 0.15.seconds, Easing.LINEAR)
+            }
+            merges.forEach { (id1, id2, pos) ->
+                sequence {
+                    parallel {
+                        blocks[id1]!!.moveTo(columnX(pos.x), rowY(pos.y), 0.15.seconds, Easing.LINEAR)
+                        blocks[id2]!!.moveTo(columnX(pos.x), rowY(pos.y), 0.15.seconds, Easing.LINEAR)
+                    }
+                    block {
+                        val nextNumber = numberFor(id1).next()
+                        deleteBlock(id1)
+                        deleteBlock(id2)
+                        createNewBlockWithId(id1, nextNumber, pos)
+                    }
+                    sequenceLazy {
+                        animateScale(blocks[id1]!!)
+                    }
+                }
+            }
+        }
+        block {
+            onEnd()
+        }
+    }
+}
+
+fun Animator.animateScale(block: Block) {
+    val x = block.x
+    val y = block.y
+    val scale = block.scale
+    tween(
+        block::x[x - 4],
+        block::y[y - 4],
+        block::scale[scale + 0.1],
+        time = 0.1.seconds,
+        easing = Easing.LINEAR
+    )
+    tween(
+        block::x[x],
+        block::y[y],
+        block::scale[scale],
+        time = 0.1.seconds,
+        easing = Easing.LINEAR
+    )
 }
