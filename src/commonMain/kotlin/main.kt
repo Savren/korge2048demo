@@ -278,39 +278,36 @@ fun Container.restart() {
     generateBlock()
 }
 
-fun Stage.showAnimation(
-    moves: List<Pair<Int, Position>>,
-    merges: List<Triple<Int, Int, Position>>,
-    onEnd: () -> Unit
-) = launchImmediately {
-    animateSequence {
-        parallel {
-            moves.forEach { (id, pos) ->
-                blocks[id]!!.moveTo(columnX(pos.x), rowY(pos.y), 0.15.seconds, Easing.LINEAR)
-            }
-            merges.forEach { (id1, id2, pos) ->
-                sequence {
-                    parallel {
-                        blocks[id1]!!.moveTo(columnX(pos.x), rowY(pos.y), 0.15.seconds, Easing.LINEAR)
-                        blocks[id2]!!.moveTo(columnX(pos.x), rowY(pos.y), 0.15.seconds, Easing.LINEAR)
-                    }
-                    block {
-                        val nextNumber = numberFor(id1).next()
-                        deleteBlock(id1)
-                        deleteBlock(id2)
-                        createNewBlockWithId(id1, nextNumber, pos)
-                    }
-                    sequenceLazy {
-                        animateScale(blocks[id1]!!)
+fun Stage.showAnimation(moves: List<Pair<Int, Position>>, merges: List<Triple<Int, Int, Position>>, onEnd: () -> Unit) =
+    launchImmediately {
+        animateSequence {
+            parallel {
+                moves.forEach { (id, pos) ->
+                    blocks[id]!!.moveTo(columnX(pos.x), rowY(pos.y), 0.15.seconds, Easing.LINEAR)
+                }
+                merges.forEach { (id1, id2, pos) ->
+                    sequence {
+                        parallel {
+                            blocks[id1]!!.moveTo(columnX(pos.x), rowY(pos.y), 0.15.seconds, Easing.LINEAR)
+                            blocks[id2]!!.moveTo(columnX(pos.x), rowY(pos.y), 0.15.seconds, Easing.LINEAR)
+                        }
+                        block {
+                            val nextNumber = numberFor(id1).next()
+                            deleteBlock(id1)
+                            deleteBlock(id2)
+                            createNewBlockWithId(id1, nextNumber, pos)
+                        }
+                        sequenceLazy {
+                            animateScale(blocks[id1]!!)
+                        }
                     }
                 }
             }
-        }
-        block {
-            onEnd()
+            block {
+                onEnd()
+            }
         }
     }
-}
 
 fun Animator.animateScale(block: Block) {
     val x = block.x
