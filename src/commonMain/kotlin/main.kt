@@ -4,6 +4,7 @@ import com.soywiz.korge.*
 import com.soywiz.korge.animate.Animator
 import com.soywiz.korge.animate.animateSequence
 import com.soywiz.korge.input.*
+import com.soywiz.korge.service.storage.storage
 import com.soywiz.korge.tween.*
 import com.soywiz.korge.ui.*
 import com.soywiz.korge.view.*
@@ -13,6 +14,7 @@ import com.soywiz.korim.font.BitmapFont
 import com.soywiz.korim.font.readBitmapFont
 import com.soywiz.korim.format.readBitmap
 import com.soywiz.korim.text.TextAlignment
+import com.soywiz.korio.async.ObservableProperty
 import com.soywiz.korio.async.launchImmediately
 import com.soywiz.korio.file.std.resourcesVfs
 import com.soywiz.korma.geom.Rectangle
@@ -30,8 +32,11 @@ var freeId = 0
 var map = PositionMap()
 var isAnimationRunning = false
 var isGameOver = false
+var history: History by Delegates.notNull()
 
 val blocks = mutableMapOf<Int, Block>()
+val score = ObservableProperty(0)
+val best = ObservableProperty(0)
 
 suspend fun main() = Korge(width = 480, height = 640, bgcolor = RGBA(253, 247, 240), title = "2048 Test") {
     cellSize = views.virtualWidth / 5.0
@@ -39,6 +44,20 @@ suspend fun main() = Korge(width = 480, height = 640, bgcolor = RGBA(253, 247, 2
     leftIndent = (views.virtualWidth - fieldSize) / 2
     topIndent = 150.0
     font = resourcesVfs["clear_sans.fnt"].readBitmapFont()
+
+    val storage = views.storage
+    history = History(storage.getOrNull("history")) {
+        storage["history"] = it.toString()
+    }
+    best.update(storage.getOrNull("best")?.toInt() ?: 0)
+
+    score.observe {
+        if (it > best.value) best.update(it)
+    }
+
+    best.observe {
+        storage["best"] = it.toString()
+    }
 
     val restartImg = resourcesVfs["restart.png"].readBitmap()
     val undoImg = resourcesVfs["undo.png"].readBitmap()
@@ -75,7 +94,7 @@ suspend fun main() = Korge(width = 480, height = 640, bgcolor = RGBA(253, 247, 2
         centerXOn(bgBest)
         alignTopToTopOf(bgBest, 5.0)
     }
-    text("0", cellSize * 0.5, Colors.WHITE, font) {
+    text(best.value.toString(), cellSize * 0.5, Colors.WHITE, font) {
         setTextBounds(Rectangle(0.0, 0.0, bgBest.width, cellSize - 24.0))
         alignment = TextAlignment.MIDDLE_CENTER
         alignTopToTopOf(bgBest, 12.0)
@@ -85,7 +104,7 @@ suspend fun main() = Korge(width = 480, height = 640, bgcolor = RGBA(253, 247, 2
         centerXOn(bgScore)
         alignTopToTopOf(bgScore, 5.0)
     }
-    text("0", cellSize * 0.5, Colors.WHITE, font) {
+    text(score.value.toString(), cellSize * 0.5, Colors.WHITE, font) {
         setTextBounds(Rectangle(0.0, 0.0, bgScore.width, cellSize - 24.0))
         alignment = TextAlignment.MIDDLE_CENTER
         alignTopToTopOf(bgScore, 12.0)
@@ -111,9 +130,16 @@ suspend fun main() = Korge(width = 480, height = 640, bgcolor = RGBA(253, 247, 2
         }
         alignTopToTopOf(restartBlock)
         alignRightToLeftOf(restartBlock, 5.0)
+        onClick {
+            this@Korge.restoreField(history.undo())
+        }
     }
 
-    generateBlock()
+    if (!history.isEmpty()) {
+        restoreField(history.currentElement)
+    } else {
+        generateBlockAndSave()
+    }
 
     keys {
         down {
@@ -150,11 +176,12 @@ fun Container.createNewBlock(number: Number, position: Position): Int {
     return id
 }
 
-fun Container.generateBlock() {
+fun Container.generateBlockAndSave() {
     val position = map.getRandomFreePosition() ?: return
     val number = if (Random.nextDouble() < 0.9) Number.ZERO else Number.ONE
     val newId = createNewBlock(number, position)
     map[position.x, position.y] = newId
+    history.add(map.toNumberIds(), score.value)
 }
 
 fun Container.showGameOver(onRestart: () -> Unit) = container {
@@ -198,13 +225,11 @@ fun Stage.moveBlocksTo(direction: Direction) {
         return
     }
 
-    if (!map.hasAvailableMoves()) {
-        if (!isGameOver) {
-            isGameOver = true
-            showGameOver {
-                isGameOver = false
-                restart()
-            }
+    if (!map.hasAvailableMoves() && !isGameOver) {
+        isGameOver = true
+        showGameOver {
+            isGameOver = false
+            restart()
         }
     }
 
@@ -217,8 +242,10 @@ fun Stage.moveBlocksTo(direction: Direction) {
         isAnimationRunning = true
         showAnimation(moves, merges) {
             map = newMap
-            generateBlock()
+            generateBlockAndSave()
             isAnimationRunning = false
+            val points = merges.sumBy { numberFor(it.first).value }
+            score.update(score.value + points)
         }
     }
 }
@@ -275,7 +302,29 @@ fun Container.restart() {
     map = PositionMap()
     blocks.values.forEach { it.removeFromParent() }
     blocks.clear()
-    generateBlock()
+    score.update(0)
+    history.clear()
+    generateBlockAndSave()
+}
+
+fun Container.restoreField(history: History.Element) {
+    map.forEach { if (it != -1) deleteBlock(it) }
+    map = PositionMap()
+    score.update(history.score)
+    freeId = 0
+    val numbers = history.numberIds.map {
+        if (it >= 0 && it < Number.values().size) {
+            Number.values()[it]
+        } else {
+            null
+        }
+    }
+    numbers.forEachIndexed { i, number ->
+        if (number != null) {
+            val newId = createNewBlock(number, Position(i % 4, i / 4))
+            map[i % 4, i / 4] = newId
+        }
+    }
 }
 
 fun Stage.showAnimation(moves: List<Pair<Int, Position>>, merges: List<Triple<Int, Int, Position>>, onEnd: () -> Unit) =

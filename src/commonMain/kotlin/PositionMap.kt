@@ -58,6 +58,8 @@ class PositionMap(private val array: IntArray2 = IntArray2(4, 4, -1)) {
         return null
     }
 
+    fun toNumberIds() = IntArray(16) { getNumber(it % 4, it / 4) }
+
     override fun equals(other: Any?): Boolean {
         return (other is PositionMap) && this.array.data.contentEquals(other.array.data)
     }
