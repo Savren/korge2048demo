@@ -99,6 +99,9 @@ suspend fun main() = Korge(width = 480, height = 640, bgcolor = RGBA(253, 247, 2
         alignment = TextAlignment.MIDDLE_CENTER
         alignTopToTopOf(bgBest, 12.0)
         centerXOn(bgBest)
+        best.observe {
+            text = it.toString()
+        }
     }
     text("SCORE", cellSize * 0.25, RGBA(239, 226, 210), font) {
         centerXOn(bgScore)
@@ -109,6 +112,9 @@ suspend fun main() = Korge(width = 480, height = 640, bgcolor = RGBA(253, 247, 2
         alignment = TextAlignment.MIDDLE_CENTER
         alignTopToTopOf(bgScore, 12.0)
         centerXOn(bgScore)
+        score.observe {
+            text = it.toString()
+        }
     }
     val restartBlock = container {
         val background = roundRect(btnSize, btnSize, 5.0, fill = RGBA(185, 174, 160))
