@@ -159,7 +159,7 @@ suspend fun main() = Korge(width = 480, height = 640, bgcolor = RGBA(253, 247, 2
         }
     }
 
-    onSwipe(20.0) {
+    onSwipe(40.0) {
         when (it.direction) {
             SwipeDirection.LEFT -> moveBlocksTo(Direction.LEFT)
             SwipeDirection.RIGHT -> moveBlocksTo(Direction.RIGHT)
@@ -305,6 +305,10 @@ fun numberFor(blockId: Int) = blocks[blockId]!!.number
 fun deleteBlock(blockId: Int) = blocks.remove(blockId)!!.removeFromParent()
 
 fun Container.restart() {
+    if(isGameOver) {
+        this.lastChild?.removeFromParent()
+        isGameOver = false
+    }
     map = PositionMap()
     blocks.values.forEach { it.removeFromParent() }
     blocks.clear()
