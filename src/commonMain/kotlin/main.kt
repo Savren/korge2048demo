@@ -250,7 +250,7 @@ fun Stage.moveBlocksTo(direction: Direction) {
             map = newMap
             generateBlockAndSave()
             isAnimationRunning = false
-            val points = merges.sumBy { numberFor(it.first).value }
+            val points = merges.sumOf { numberFor(it.first).value }
             score.update(score.value + points)
         }
     }
